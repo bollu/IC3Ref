@@ -1,5 +1,23 @@
 # Notes on IC3
 
+##### Border cubes manipulation by propagate
+
+```
+../IC3.cpp
+295:      CubeSet borderCubes;  // additional cubes in this and previous frames
+304:    // does not set 'borderCubes' of 'frame'.
+662:      pair<CubeSet::iterator, bool> rv = frames[level].borderCubes.insert(cube);
+734:      earliest = k+1;  // earliest frame with enlarged borderCubes
+776:        set_difference(fr.borderCubes.begin(), fr.borderCubes.end(),
+780:          cout << i << " " << fr.borderCubes.size() << " " << rem.size() << " ";
+781:        fr.borderCubes.swap(rem);
+786:        for (CubeSet::const_iterator i = fr.borderCubes.begin();
+787:             i != fr.borderCubes.end(); ++i)
+797:        for (CubeSet::iterator j = fr.borderCubes.begin();
+798:             j != fr.borderCubes.end();) {
+809:            fr.borderCubes.erase(tmp);
+818:        if (fr.borderCubes.empty())
+```
 
 #### Error occurence:
 

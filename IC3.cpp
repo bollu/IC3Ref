@@ -295,14 +295,14 @@ namespace IC3 {
       CubeSet borderCubes;  // additional cubes in this and previous frames
       Minisat::Solver * m_consecutionSolver; // solver has clauses that describe how to go to next frame.
     };
-    vector<Frame> frames;
+    vector<Frame> frames; // indexed by k (i.e. level).
 
     Minisat::Solver * lifts;
     Minisat::Lit notInvConstraints;
 
     // Push a new Frame.
-    // does not set 'borderCubes'.
-    // only sets 'k' and 'consecution'.
+    // does not set 'borderCubes' of 'frame'.
+    // only sets 'k' and 'm_consecutionSolver'.
     void extend() {
       while (frames.size() < k+2) {
         // add a new frame.
@@ -456,8 +456,9 @@ namespace IC3 {
       return st;
     }
 
-    // Checks if cube contains any initial states.
-    bool initiation(const LitVec & latches) {
+    // Returns true if cube contains any initial states.
+    // checked in doConsecution(), and ctgDown.
+    bool doesCubeContainInitialStates(const LitVec & latches) {
       return !model.isInitial(latches);
     }
 
@@ -520,7 +521,7 @@ namespace IC3 {
              i != latches.end(); ++i)
           if (fr.m_consecutionSolver->conflict.has(~model.primeLit(*i)))
             core->push_back(*i);
-        if (!initiation(*core))
+        if (!doesCubeContainInitialStates(*core))
           *core = latches;
       }
       fr.m_consecutionSolver->releaseVar(~act);
@@ -536,11 +537,12 @@ namespace IC3 {
     //
     // Improves upon "down" from the original paper (and the FMCAD'07
     // paper) by handling CTGs.
+    // propagates cube 'down'?
     bool ctgDown(size_t level, LitVec & cube, size_t keepTo, size_t recDepth) {
       size_t ctgs = 0, joins = 0;
       while (true) {
         // induction check
-        if (!initiation(cube))
+        if (!doesCubeContainInitialStates(cube))
           return false;
         if (recDepth > maxDepth) {
           // quick check if recursion depth is exceeded
@@ -570,7 +572,7 @@ namespace IC3 {
         // not inductive, address interfering CTG
         LitVec ctgCore;
         bool ret = false;
-        if (ctgs < maxCTGs && level > 1 && initiation(state(ctg).latches)
+        if (ctgs < maxCTGs && level > 1 && doesCubeContainInitialStates(state(ctg).latches)
             && doConsecution(level-1, state(ctg).latches, cubeState, &ctgCore)) {
           // CTG is inductive relative to level-1; push forward and generalize
           ++nCTG;  // stats
@@ -611,6 +613,7 @@ namespace IC3 {
     // ~cube --- at least that's where the name comes from.  With
     // ctgDown, it's not quite a MIC anymore, but what's returned is
     // inductive relative to the possibly modifed level.
+    // MIC: minimal inductive cube.
     void mic(size_t level, LitVec & cube, size_t recDepth) {
       ++nmic;  // stats
       // try dropping each literal in turn
@@ -654,6 +657,8 @@ namespace IC3 {
 
     // Adds cube to frames at and below level, unless !toAll, in which
     // case only to level.
+    // level = k. 
+    // called by ctgDown(), generalize(), and propagate()
     void addCube(size_t level, LitVec & cube, bool toAll = true, 
                  bool silent = false)
     {

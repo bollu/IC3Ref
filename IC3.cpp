@@ -165,7 +165,11 @@ namespace IC3 {
       while (true) {
         if (verbose > 1) cout << "Level " << k << endl;
         extend();                         // push frontier frame
+
+        // strengthen -> 
         if (!strengthen()) return false;  // strengthen to remove bad successors
+
+        // propagate -> addCube
         if (propagate()) return true;     // propagate clauses; check for proof
         printStats();
         ++k;                              // increment frontier
@@ -538,6 +542,7 @@ namespace IC3 {
     // Improves upon "down" from the original paper (and the FMCAD'07
     // paper) by handling CTGs.
     // propagates cube 'down'?
+    // mic() -> ctgDown() 
     bool ctgDown(size_t level, LitVec & cube, size_t keepTo, size_t recDepth) {
       size_t ctgs = 0, joins = 0;
       while (true) {
@@ -580,8 +585,8 @@ namespace IC3 {
           size_t j = level;
           // QUERY: generalize then push or vice versa?
           while (j <= k && isCubeInductiveForFrame(j, ctgCore)) ++j;
-          mic(j-1, ctgCore, recDepth+1);
-          addCube(j, ctgCore);
+          minimalInductiveCubeAux(j-1, ctgCore, recDepth+1);
+          addCubeAtAndBelowLevel(j, ctgCore);
         }
         else if (joins < maxJoins) {
           // ran out of CTG attempts, so join instead
@@ -614,7 +619,8 @@ namespace IC3 {
     // ctgDown, it's not quite a MIC anymore, but what's returned is
     // inductive relative to the possibly modifed level.
     // MIC: minimal inductive cube.
-    void mic(size_t level, LitVec & cube, size_t recDepth) {
+    // Sets 'cube' variable to a minimal inductive cube.
+    void minimalInductiveCubeAux(size_t level, LitVec & cube, size_t recDepth) {
       ++nmic;  // stats
       // try dropping each literal in turn
       size_t attempts = micAttempts;
@@ -649,8 +655,10 @@ namespace IC3 {
     }
 
     // wrapper to start inductive generalization
-    void mic(size_t level, LitVec & cube) {
-      mic(level, cube, 1);
+    // called from generalize(). 
+    // sets 'cube' to a minimal inductive cube.
+    void minimalInductiveCube(size_t level, LitVec & cube) {
+      minimalInductiveCubeAux(level, cube, 1);
     }
 
     size_t earliest;  // track earliest modified level in a major iteration
@@ -659,7 +667,7 @@ namespace IC3 {
     // case only to level.
     // level = k. 
     // called by ctgDown(), generalize(), and propagate()
-    void addCube(size_t level, LitVec & cube, bool toAll = true, 
+    void addCubeAtAndBelowLevel(size_t level, LitVec & cube, bool toAll = true, 
                  bool silent = false)
     {
       sort(cube.begin(), cube.end());
@@ -679,12 +687,13 @@ namespace IC3 {
 
     // ~cube was found to be inductive relative to level; now see if
     // we can do better.
+    // adds cube to frames from a given cube.
     size_t generalize(size_t level, LitVec cube) {
       // generalize
-      mic(level, cube);
+      minimalInductiveCube(level, cube);
       // push
       do { ++level; } while (level <= k && isCubeInductiveForFrame(level, cube));
-      addCube(level, cube);
+      addCubeAtAndBelowLevel(level, cube, /*toAll=*/ true, /*silent=*/false);
       return level;
     }
 
@@ -807,7 +816,7 @@ namespace IC3 {
             bool addToAll = core.size() < j->size();
             // if core is reduced, then add to all frames.
             // This is the woowoo about 'reducing the interpolant' or whatever.
-            addCube(i+1, core, addToAll, true);
+            addCubeAtAndBelowLevel(i+1, core, addToAll, true);
             CubeSet::iterator tmp = j;
             ++j;
             fr.borderCubes.erase(tmp);

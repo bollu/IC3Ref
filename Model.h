@@ -91,6 +91,7 @@ public:
   // divisions between variable types, constraints, next-state
   // functions, the error, and the AND table, closely reflecting the
   // AIGER format.  Easier to use "modelFromAiger()", below.
+  // _reps are the right hand sides of each AND gate.
   Model(vector<Var> _vars, 
         size_t _inputs, size_t _latches, size_t _reps, 
         LitVec _init, LitVec _constraints, LitVec _nextStateFns, 
@@ -235,7 +236,14 @@ private:
 
 };
 
-// The easiest way to create a model.
+// The easiest way to create a model, for a given property 'prop'
+// at index 'i'. If there is a 'bad' property, then `propertyIndex`
+// indexes the bad property, otherwise it indexes the output
+// property.
+// Minisat::Lit err = 
+//   aig->num_bad > 0 
+//   ? lit(vars, aig->bad[propertyIndex].lit) 
+//   : lit(vars, aig->outputs[propertyIndex].lit);
 Model * modelFromAiger(aiger * aig, unsigned int propertyIndex);
 
 #endif

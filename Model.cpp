@@ -77,6 +77,8 @@ Minisat::Solver * Model::newSolver() const {
   return slv;
 }
 
+// build the transition relation:
+// constraint /\ primed constraint /\ transition /\ ~error
 void Model::loadTransitionRelation(Minisat::Solver & slv, bool primeConstraints) {
   if (!sslv) {
     // create a simplified CNF version of (this slice of) the TR
@@ -105,8 +107,9 @@ void Model::loadTransitionRelation(Minisat::Solver & slv, bool primeConstraints)
     }
     // initialize with roots of required formulas
     LitSet require;  // unprimed formulas
-    for (VarVec::const_iterator i = beginLatches(); i != endLatches(); ++i)
+    for (VarVec::const_iterator i = beginLatches(); i != endLatches(); ++i) {
       require.insert(nextStateFn(*i));
+    }
     require.insert(_error);
     require.insert(constraints.begin(), constraints.end());
     LitSet prequire; // for primed formulas; always subset of require
@@ -144,6 +147,7 @@ void Model::loadTransitionRelation(Minisat::Solver & slv, bool primeConstraints)
     // assert literal for true
     sslv->addClause(btrue());
     // assert ~error, constraints, and primed constraints
+    // should this not be ~error' ?
     sslv->addClause(~_error);
     for (LitVec::const_iterator i = constraints.begin(); 
          i != constraints.end(); ++i) {
@@ -155,6 +159,7 @@ void Model::loadTransitionRelation(Minisat::Solver & slv, bool primeConstraints)
       sslv->addClause(~platch, f);
       sslv->addClause(~f, platch);
     }
+    // simplify.
     sslv->eliminate(true);
   }
   // load the clauses from the simplified context
@@ -191,6 +196,11 @@ void Model::loadInitialCondition(Minisat::Solver & slv) const {
         && require.find(~i->lhs) == require.end())
       continue;
     // encode into CNF
+    // lhs = 0 => rhs0 = 0 
+    // !lhs => !rhs0
+    // !lhs \/ !!rhs0
+    // !lhs \/ rhs0
+  
     slv.addClause(~i->lhs, i->rhs0);
     slv.addClause(~i->lhs, i->rhs1);
     slv.addClause(~i->rhs0, ~i->rhs1, i->lhs);

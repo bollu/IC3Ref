@@ -268,12 +268,12 @@ namespace IC3 {
     };
     typedef set<LitVec, LitVecComp> CubeSet;
 
-    // A proof obligation.
+    // A proof obligation, created from strengthen() and handleObligations().
     struct Obligation {
       Obligation(size_t st, size_t l, size_t d) :
         state(st), level(l), depth(d) {}
       size_t state;  // Generalize this state...
-      size_t level;  // ... relative to this level.
+      size_t level;  // ... relative to this level. (i.e. k-1 for frame k)
       size_t depth;  // Length of CTI suffix to error.
     };
     class ObligationComp {
@@ -293,7 +293,7 @@ namespace IC3 {
     struct Frame {
       size_t k;             // steps from initial state
       CubeSet borderCubes;  // additional cubes in this and previous frames
-      Minisat::Solver * consecution;
+      Minisat::Solver * consecution; // solver has clauses that describe how to go to next frame.
     };
     vector<Frame> frames;
 
@@ -301,17 +301,23 @@ namespace IC3 {
     Minisat::Lit notInvConstraints;
 
     // Push a new Frame.
+    // does not set 'borderCubes'.
+    // only sets 'k' and 'consecution'.
     void extend() {
       while (frames.size() < k+2) {
+        // add a new frame.
         frames.resize(frames.size()+1);
         Frame & fr = frames.back();
         fr.k = frames.size()-1;
         fr.consecution = model.newSolver();
-        if (random) {
-          fr.consecution->random_seed = rand();
-          fr.consecution->rnd_init_act = true;
-        }
+
+        // if (random) {
+        //   fr.consecution->random_seed = rand();
+        //   fr.consecution->rnd_init_act = true;
+        // }
+        // if initial frame, load initial condition
         if (fr.k == 0) model.loadInitialCondition(*fr.consecution);
+        // load transition relation.
         model.loadTransitionRelation(*fr.consecution);
       }
     }
@@ -379,6 +385,9 @@ namespace IC3 {
     // Assumes that last call to fr.consecution->solve() was
     // satisfiable.  Extracts state(s) cube from satisfying
     // assignment.
+    // Note that these are the states that violate the invariant upon transition.
+    // Called when a counterexample to induction is found was found from 
+    // consecution() / strengthen()
     size_t stateOf(Frame & fr, size_t succ = 0) {
       // create state
       size_t st = newState();
@@ -393,10 +402,12 @@ namespace IC3 {
       cls.push(notInvConstraints);  // successor must satisfy inv. constraint
       if (succ == 0)
         cls.push(~model.primedError());
-      else
+      else {
         for (LitVec::const_iterator i = state(succ).latches.begin(); 
-             i != state(succ).latches.end(); ++i)
+             i != state(succ).latches.end(); ++i) {
           cls.push(model.primeLit(~*i));
+        }
+      }
       lifts->addClause_(cls);
       // extract and assert primary inputs
       for (VarVec::const_iterator i = model.beginInputs(); 
@@ -454,17 +465,23 @@ namespace IC3 {
     // inductive and core is provided, extracts the unsat core.  If
     // it's not inductive and pred is provided, extracts
     // predecessor(s).
+    // bolluQ: what are precedessors?
     bool consecution(size_t fi, const LitVec & latches, size_t succ = 0,
                      LitVec * core = NULL, size_t * pred = NULL, 
                      bool orderedCore = false)
     {
-      Frame & fr = frames[fi];
+      Frame & fr = frames[fi]; // grab frame.
       MSLitVec assumps, cls;
-      assumps.capacity(1 + latches.size());
+      assumps.capacity(1 + latches.size()); // 1 consumed by 'act'.
       cls.capacity(1 + latches.size());
-      Minisat::Lit act = Minisat::mkLit(fr.consecution->newVar());
+      Minisat::Lit act = Minisat::mkLit(fr.consecution->newVar()); // make a new literal.
+      // push an assumption 'act'.
       assumps.push(act);
+      // push the negation of this into the clause, probably to find clause?
       cls.push(~act);
+      // cls: !l0 \/ !l1 \/ ... !ln : cls = T <-> exists i, l[i] = F; cls = F <-> forall i, l[i] = T.
+      //asumps : l0 \/ l1 \/ .... 
+      // push the negation of each of the latch variables.
       for (LitVec::const_iterator i = latches.begin(); 
            i != latches.end(); ++i) {
         cls.push(~*i);
@@ -473,7 +490,8 @@ namespace IC3 {
       // ... order... (empirically found to best choice)
       if (pred) orderAssumps(assumps, false, 1);
       else orderAssumps(assumps, orderedCore, 1);
-      // ... now prime
+      //asumps : l0' \/ l1' \/ .... ln'. | assumps = T <-> exists i, l'[i] = T
+      // ... now prime all the assumptions.
       for (int i = 1; i < assumps.size(); ++i)
         assumps[i] = model.primeLit(assumps[i]);
       fr.consecution->addClause_(cls);
@@ -667,6 +685,7 @@ namespace IC3 {
     size_t cexState;  // beginning of counterexample trace
 
     // Process obligations according to priority.
+    // called from check() -> strengthen() -> handleObligations()
     bool handleObligations(PriorityQueue obls) {
       while (!obls.empty()) {
         PriorityQueue::iterator obli = obls.begin();
@@ -674,8 +693,13 @@ namespace IC3 {
         LitVec core;
         size_t predi;
         // Is the obligation fulfilled?
+        // Check if ~latches is inductive relative to frame fi. If it's
+        // inductive and core is provided, extracts the unsat core. If
+        // it's not inductive and pred is provided, extracts
+        // predecessor(s).)
         if (consecution(obl.level, state(obl.state).latches, obl.state, 
                         &core, &predi)) {
+          // yes it is inductive.
           // Yes, so generalize and possibly produce a new obligation
           // at a higher level.
           obls.erase(obli);
@@ -707,17 +731,27 @@ namespace IC3 {
       earliest = k+1;  // earliest frame with enlarged borderCubes
       while (true) {
         ++nQuery; startTimer();  // stats
+        // solve for error successor, given transition relation.
+        // returns 'true' if model was found.
         bool rv = frontier.consecution->solve(model.primedError());
         endTimer(satTime);
+
+        // no counter-example model found, so return 'true' to indicate
+        // that we have strengthened?
         if (!rv) return true;
         // handle CTI with error successor
+        // found a counter-example to induction.
         ++nCTI;  // stats
         trivial = false;
+        // lol what, start a priority queue right here?!
         PriorityQueue pq;
         // enqueue main obligation and handle
         pq.insert(Obligation(stateOf(frontier), k-1, 1));
-        if (!handleObligations(pq))
+        // note than handling an obligation may add more
+        // obligations, so we loop until no more obligations are left.
+        if (!handleObligations(pq)) {
           return false;
+        }
         // finished with States for this iteration, so clean up
         resetStates();
       }

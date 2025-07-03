@@ -466,6 +466,7 @@ namespace IC3 {
     // it's not inductive and pred is provided, extracts
     // predecessor(s).
     // bolluQ: what are precedessors?
+    // bollu: the 'latches' are actually the cube.
     bool consecution(size_t fi, const LitVec & latches, size_t succ = 0,
                      LitVec * core = NULL, size_t * pred = NULL, 
                      bool orderedCore = false)
@@ -725,6 +726,7 @@ namespace IC3 {
                    // during major iteration
 
     // Strengthens frontier to remove error successors.
+    // called from check() -> strengthen()
     bool strengthen() {
       Frame & frontier = frames[k];
       trivial = true;  // whether any cubes are generated
@@ -765,6 +767,7 @@ namespace IC3 {
     bool propagate() {
       if (verbose > 1) cout << "propagate" << endl;
       // 1. clean up: remove c in frame i if c appears in frame j when i < j
+      // bollu: i.e. keep 'c' from latest frame where it appears.
       CubeSet all;
       for (size_t i = k+1; i >= earliest; --i) {
         Frame & fr = frames[i];
@@ -786,6 +789,7 @@ namespace IC3 {
           cout << all.size() << endl;
       }
       // 2. check if each c in frame i can be pushed to frame j
+      // bollu: this goes all the way to k.
       for (size_t i = trivial ? k : 1; i <= k; ++i) {
         int ckeep = 0, cprop = 0, cdrop = 0;
         Frame & fr = frames[i];
@@ -795,7 +799,10 @@ namespace IC3 {
           if (consecution(i, *j, 0, &core)) {
             ++cprop;
             // only add to frame i+1 unless the core is reduced
-            addCube(i+1, core, core.size() < j->size(), true);
+            bool addToAll = core.size() < j->size();
+            // if core is reduced, then add to all frames.
+            // This is the woowoo about 'reducing the interpolant' or whatever.
+            addCube(i+1, core, addToAll, true);
             CubeSet::iterator tmp = j;
             ++j;
             fr.borderCubes.erase(tmp);

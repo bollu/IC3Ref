@@ -78,7 +78,8 @@ Minisat::Solver * Model::newSolver() const {
 }
 
 // build the transition relation:
-// constraint /\ primed constraint /\ transition /\ ~error
+// constraint /\ primed constraint /\ transition /\ ~error.
+// Allows the caller to add ~error' if they want.
 void Model::loadTransitionRelation(Minisat::Solver & slv, bool primeConstraints) {
   if (!sslv) {
     // create a simplified CNF version of (this slice of) the TR

@@ -155,7 +155,7 @@ namespace IC3 {
     ~IC3() {
       for (vector<Frame>::const_iterator i = frames.begin(); 
            i != frames.end(); ++i)
-        if (i->consecution) delete i->consecution;
+        if (i->m_consecutionSolver) delete i->m_consecutionSolver;
       delete lifts;
     }
 
@@ -293,7 +293,7 @@ namespace IC3 {
     struct Frame {
       size_t k;             // steps from initial state
       CubeSet borderCubes;  // additional cubes in this and previous frames
-      Minisat::Solver * consecution; // solver has clauses that describe how to go to next frame.
+      Minisat::Solver * m_consecutionSolver; // solver has clauses that describe how to go to next frame.
     };
     vector<Frame> frames;
 
@@ -309,16 +309,16 @@ namespace IC3 {
         frames.resize(frames.size()+1);
         Frame & fr = frames.back();
         fr.k = frames.size()-1;
-        fr.consecution = model.newSolver();
+        fr.m_consecutionSolver = model.newSolver();
 
         // if (random) {
         //   fr.consecution->random_seed = rand();
         //   fr.consecution->rnd_init_act = true;
         // }
         // if initial frame, load initial condition
-        if (fr.k == 0) model.loadInitialCondition(*fr.consecution);
+        if (fr.k == 0) model.loadInitialCondition(*fr.m_consecutionSolver);
         // load transition relation.
-        model.loadTransitionRelation(*fr.consecution);
+        model.loadTransitionRelation(*fr.m_consecutionSolver);
       }
     }
 
@@ -412,7 +412,7 @@ namespace IC3 {
       // extract and assert primary inputs
       for (VarVec::const_iterator i = model.beginInputs(); 
            i != model.endInputs(); ++i) {
-        Minisat::lbool val = fr.consecution->modelValue(i->var());
+        Minisat::lbool val = fr.m_consecutionSolver->modelValue(i->var());
         if (val != Minisat::l_Undef) {
           Minisat::Lit pi = i->lit(val == Minisat::l_False);
           state(st).inputs.push_back(pi);  // record full inputs
@@ -423,7 +423,7 @@ namespace IC3 {
       for (VarVec::const_iterator i = model.beginInputs(); 
            i != model.endInputs(); ++i) {
         Minisat::lbool pval = 
-          fr.consecution->modelValue(model.primeVar(*i).var());
+          fr.m_consecutionSolver->modelValue(model.primeVar(*i).var());
         if (pval != Minisat::l_Undef)
           assumps.push(model.primeLit(i->lit(pval == Minisat::l_False)));
       }
@@ -432,7 +432,7 @@ namespace IC3 {
       LitVec latches;
       for (VarVec::const_iterator i = model.beginLatches(); 
            i != model.endLatches(); ++i) {
-        Minisat::lbool val = fr.consecution->modelValue(i->var());
+        Minisat::lbool val = fr.m_consecutionSolver->modelValue(i->var());
         if (val != Minisat::l_Undef) {
           Minisat::Lit la = i->lit(val == Minisat::l_False);
           latches.push_back(la);
@@ -475,7 +475,7 @@ namespace IC3 {
       MSLitVec assumps, cls;
       assumps.capacity(1 + latches.size()); // 1 consumed by 'act'.
       cls.capacity(1 + latches.size());
-      Minisat::Lit act = Minisat::mkLit(fr.consecution->newVar()); // make a new literal.
+      Minisat::Lit act = Minisat::mkLit(fr.m_consecutionSolver->newVar()); // make a new literal.
       // push an assumption 'act'.
       assumps.push(act);
       // push the negation of this into the clause, probably to find clause?
@@ -495,15 +495,15 @@ namespace IC3 {
       // ... now prime all the assumptions.
       for (int i = 1; i < assumps.size(); ++i)
         assumps[i] = model.primeLit(assumps[i]);
-      fr.consecution->addClause_(cls);
+      fr.m_consecutionSolver->addClause_(cls);
       // F_fi & ~latches & T & latches'
       ++nQuery; startTimer();  // stats
-      bool rv = fr.consecution->solve(assumps);
+      bool rv = fr.m_consecutionSolver->solve(assumps);
       endTimer(satTime);
       if (rv) {
         // fails: extract predecessor(s)
         if (pred) *pred = stateOf(fr, succ);
-        fr.consecution->releaseVar(~act);
+        fr.m_consecutionSolver->releaseVar(~act);
         return false;
       }
       // succeeds
@@ -512,18 +512,18 @@ namespace IC3 {
           // redo with correctly ordered assumps
           reverse(assumps+1, assumps+assumps.size());
           ++nQuery; startTimer();  // stats
-          rv = fr.consecution->solve(assumps);
+          rv = fr.m_consecutionSolver->solve(assumps);
           assert (!rv);
           endTimer(satTime);
         }
         for (LitVec::const_iterator i = latches.begin(); 
              i != latches.end(); ++i)
-          if (fr.consecution->conflict.has(~model.primeLit(*i)))
+          if (fr.m_consecutionSolver->conflict.has(~model.primeLit(*i)))
             core->push_back(*i);
         if (!initiation(*core))
           *core = latches;
       }
-      fr.consecution->releaseVar(~act);
+      fr.m_consecutionSolver->releaseVar(~act);
       return true;
     }
 
@@ -668,7 +668,7 @@ namespace IC3 {
       for (LitVec::const_iterator i = cube.begin(); i != cube.end(); ++i)
         cls.push(~*i);
       for (size_t i = toAll ? 1 : level; i <= level; ++i)
-        frames[i].consecution->addClause(cls);
+        frames[i].m_consecutionSolver->addClause(cls);
       if (toAll && !silent) updateLitOrder(cube, level);
     }
 
@@ -735,7 +735,7 @@ namespace IC3 {
         ++nQuery; startTimer();  // stats
         // solve for error successor, given transition relation.
         // returns 'true' if model was found.
-        bool rv = frontier.consecution->solve(model.primedError());
+        bool rv = frontier.m_consecutionSolver->solve(model.primedError());
         endTimer(satTime);
 
         // no counter-example model found, so return 'true' to indicate
@@ -819,7 +819,7 @@ namespace IC3 {
       }
       // 3. simplify frames
       for (size_t i = trivial ? k : 1; i <= k+1; ++i)
-        frames[i].consecution->simplify();
+        frames[i].m_consecutionSolver->simplify();
       lifts->simplify();
       return false;
     }

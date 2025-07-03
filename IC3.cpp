@@ -468,7 +468,7 @@ namespace IC3 {
     // predecessor(s).
     // bolluQ: what are precedessors?
     // bollu: the 'latches' are actually the cube.
-    bool isCubeInductiveForFramg(size_t fi, const LitVec & latches, size_t succ = 0,
+    bool isCubeInductiveForFrame(size_t fi, const LitVec & latches, size_t succ = 0,
                      LitVec * core = NULL, size_t * pred = NULL, 
                      bool orderedCore = false)
     {
@@ -547,7 +547,7 @@ namespace IC3 {
         if (recDepth > maxDepth) {
           // quick check if recursion depth is exceeded
           LitVec core;
-          bool rv = isCubeInductiveForFramg(level, cube, 0, &core, NULL, true);
+          bool rv = isCubeInductiveForFrame(level, cube, 0, &core, NULL, true);
           if (rv && core.size() < cube.size()) {
             ++nCoreReduced;  // stats
             cube = core;
@@ -560,7 +560,7 @@ namespace IC3 {
         state(cubeState).latches = cube;
         size_t ctg;
         LitVec core;
-        if (isCubeInductiveForFramg(level, cube, cubeState, &core, &ctg, true)) {
+        if (isCubeInductiveForFrame(level, cube, cubeState, &core, &ctg, true)) {
           if (core.size() < cube.size()) {
             ++nCoreReduced;  // stats
             cube = core;
@@ -573,13 +573,13 @@ namespace IC3 {
         LitVec ctgCore;
         bool ret = false;
         if (ctgs < maxCTGs && level > 1 && doesCubeContainInitialStates(state(ctg).latches)
-            && isCubeInductiveForFramg(level-1, state(ctg).latches, cubeState, &ctgCore)) {
+            && isCubeInductiveForFrame(level-1, state(ctg).latches, cubeState, &ctgCore)) {
           // CTG is inductive relative to level-1; push forward and generalize
           ++nCTG;  // stats
           ++ctgs;
           size_t j = level;
           // QUERY: generalize then push or vice versa?
-          while (j <= k && isCubeInductiveForFramg(j, ctgCore)) ++j;
+          while (j <= k && isCubeInductiveForFrame(j, ctgCore)) ++j;
           mic(j-1, ctgCore, recDepth+1);
           addCube(j, ctgCore);
         }
@@ -683,7 +683,7 @@ namespace IC3 {
       // generalize
       mic(level, cube);
       // push
-      do { ++level; } while (level <= k && isCubeInductiveForFramg(level, cube));
+      do { ++level; } while (level <= k && isCubeInductiveForFrame(level, cube));
       addCube(level, cube);
       return level;
     }
@@ -703,7 +703,7 @@ namespace IC3 {
         // inductive and core is provided, extracts the unsat core. If
         // it's not inductive and pred is provided, extracts
         // predecessor(s).)
-        if (isCubeInductiveForFramg(obl.level, state(obl.state).latches, obl.state, 
+        if (isCubeInductiveForFrame(obl.level, state(obl.state).latches, obl.state, 
                         &core, &predi)) {
           // yes it is inductive.
           // Yes, so generalize and possibly produce a new obligation
@@ -801,7 +801,7 @@ namespace IC3 {
         for (CubeSet::iterator j = fr.borderCubes.begin(); 
              j != fr.borderCubes.end();) {
           LitVec core;
-          if (isCubeInductiveForFramg(i, *j, 0, &core)) {
+          if (isCubeInductiveForFrame(i, *j, 0, &core)) {
             ++cprop;
             // only add to frame i+1 unless the core is reduced
             bool addToAll = core.size() < j->size();
